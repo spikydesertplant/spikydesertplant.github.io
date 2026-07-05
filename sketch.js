@@ -6,7 +6,7 @@ let firstSprite = null;
 let isFrozen = false; 
 
 function setup() {
-  new Canvas(800, 600);
+  new Canvas();
   world.gravity.y = 10;
 
   document.oncontextmenu = (e) => e.preventDefault();
