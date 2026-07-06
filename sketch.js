@@ -1,42 +1,25 @@
-let floorPlatform; // Переименовано, чтобы избежать конфликта на гитхабе
+let floorPlatform; 
 let boxes; 
 let wheels; 
+let reactors; 
 let tutorialBall;
 let firstSprite = null;
 let isFrozen = false; 
 
 function setup() {
-  // Автоматический размер под любое окно браузера
   new Canvas(windowWidth, windowHeight);
   world.gravity.y = 10;
 
   document.oncontextmenu = (e) => e.preventDefault();
 
-  // Используем floorPlatform вместо конфликтующего ground
   floorPlatform = new Sprite(400, windowHeight - 50, 1e5, 60, 'static');
   floorPlatform.color = 'gray';
 
   boxes = new Group();
   wheels = new Group(); 
+  reactors = new Group(); 
 
-  tutorialBall = new Sprite(200, 200, 180);
-  tutorialBall.color = 'lightyellow';
-  tutorialBall.friction = 0.5;
-  
-  tutorialBall.text = 
-    "🕹️ CONTROLS:\n" +
-    "• RMB - Create box\n" +
-    "• C - Create wheel\n" +
-    "• LMB x2 - Pin Joint\n" +
-    "• Select + S - Slippery\n" +
-    "• Select + A - Default\n" +
-    "• Select + Del - Delete\n" +
-    "• Space - Pause Time\n" +
-    "• R - Reset Scene";
-
-  tutorialBall.textColor = 50;
-  tutorialBall.textSize = 12;
-  tutorialBall.textRotation = false; 
+  spawnTutorialBall(200, 200);
 }
 
 function draw() {
@@ -44,9 +27,17 @@ function draw() {
 
   for (let w of wheels) {
     if (!isFrozen) {
-      w.rotationSpeed = 5; 
+      if (w.customSpeed === undefined) w.customSpeed = 5; 
+      w.rotationSpeed = w.customSpeed; 
     } else {
       w.rotationSpeed = 0; 
+    }
+  }
+
+  if (!isFrozen && frameCount % 125 === 0) {
+    for (let r of reactors) {
+      r.direction = r.rotation; 
+      r.speed = 50; 
     }
   }
 
@@ -60,9 +51,38 @@ function draw() {
     let wheel = new wheels.Sprite(mouse.x, mouse.y, 40);
     wheel.color = 'white';
     wheel.friction = 9999; 
+    wheel.customSpeed = 5; 
   }
 
-  let allInteractive = [...boxes, ...wheels, tutorialBall];
+  if (kb.presses('e')) {
+    let reactor = new reactors.Sprite(mouse.x, mouse.y, 40, 40);
+    reactor.color = 'green';
+    reactor.friction = 5.0; 
+    reactor.rotation = -90; 
+    reactor.rotationLock = true; 
+    
+    reactor.draw = () => {
+      fill('green');
+      stroke(0);
+      strokeWeight = 1;
+      rect(0, 0, 40, 40); 
+      
+      fill(255);
+      noStroke();
+      triangle(-5, -10, -5, 10, 10, 0); 
+    };
+  }
+
+  if (kb.presses('t')) {
+    if (tutorialBall) {
+      removeSpriteWithJoints(tutorialBall);
+    }
+    spawnTutorialBall(mouse.x, mouse.y);
+  }
+
+  let allInteractive = [...boxes, ...wheels, ...reactors];
+  if (tutorialBall) allInteractive.push(tutorialBall);
+
   for (let s of allInteractive) {
     if (s && s.mouse.hovering() && mouse.presses('left')) {
       if (!firstSprite) {
@@ -88,38 +108,55 @@ function draw() {
 
   if (firstSprite) {
     if (kb.presses('s')) {
-      firstSprite.color = 'blue';
-      firstSprite.friction = 0.01;
+      if (wheels.includes(firstSprite)) {
+        firstSprite.customSpeed = -firstSprite.customSpeed;
+        if (firstSprite.color === 'white') {
+          firstSprite.color = 'blue';
+        } else {
+          firstSprite.color = 'white';
+        }
+      } else if (reactors.includes(firstSprite)) {
+        firstSprite.rotation += 45; 
+      }
       resetSelection();
     }
+    
     if (kb.presses('a')) {
       if (firstSprite === tutorialBall) {
         firstSprite.color = 'lightyellow';
         firstSprite.friction = 0.5;
+      } else if (reactors.includes(firstSprite)) {
+        firstSprite.color = 'green';
+        firstSprite.friction = 5.0; 
+        firstSprite.rotation = -90;
+      } else if (wheels.includes(firstSprite)) {
+        firstSprite.color = 'white';
+        firstSprite.friction = 9999;
+        firstSprite.customSpeed = 5;
       } else {
-        firstSprite.color = wheels.includes(firstSprite) ? 'white' : 'black';
-        firstSprite.friction = wheels.includes(firstSprite) ? 9999 : 0.5;
+        firstSprite.color = 'black';
+        firstSprite.friction = 0.5;
       }
       resetSelection();
     }
   }
 
-  for (let s of [...boxes, ...wheels]) {
+  for (let s of [...boxes, ...wheels, ...reactors]) {
     if (s.y > 2000 || s.y < -2000) {
       if (firstSprite === s) firstSprite = null;
-      s.remove();
+      removeSpriteWithJoints(s);
     }
   }
   
   if (tutorialBall && (tutorialBall.y > 2000 || tutorialBall.y < -2000)) {
     if (firstSprite === tutorialBall) firstSprite = null;
-    tutorialBall.remove();
+    removeSpriteWithJoints(tutorialBall);
     tutorialBall = null;
   }
 
   if (mouse.presses('left')) {
     let hoveredAny = false;
-    for (let s of [...boxes, ...wheels]) {
+    for (let s of [...boxes, ...wheels, ...reactors]) {
       if (s.mouse.hovering()) hoveredAny = true;
     }
     if (tutorialBall && tutorialBall.mouse.hovering()) hoveredAny = true;
@@ -128,22 +165,30 @@ function draw() {
 
   if ((kb.presses('delete') || kb.presses('backspace')) && firstSprite) {
     if (firstSprite === tutorialBall) {
-      tutorialBall.remove();
+      removeSpriteWithJoints(tutorialBall);
       tutorialBall = null;
     } else {
-      firstSprite.remove();
+      removeSpriteWithJoints(firstSprite);
     }
     firstSprite = null;
   }
 
+  
   if (kb.presses('r')) {
-    boxes.removeAll(); 
-    wheels.removeAll();
+    for (let s of [...boxes, ...wheels, ...reactors]) {
+      removeSpriteWithJoints(s);
+    }
     if (tutorialBall) {
-      tutorialBall.remove();
+      removeSpriteWithJoints(tutorialBall);
       tutorialBall = null;
     }
+    
+    boxes.removeAll(); 
+    wheels.removeAll();
+    reactors.removeAll(); 
+    
     resetSelection();
+    spawnTutorialBall(200, 200); 
   }
 
   if (kb.presses('space')) {
@@ -154,13 +199,44 @@ function draw() {
   updateCamera();
 }
 
+function spawnTutorialBall(x, y) {
+  tutorialBall = new Sprite(x, y, 180);
+  tutorialBall.color = 'lightyellow';
+  tutorialBall.friction = 0.5;
+  
+  tutorialBall.text = 
+    "RMB - New Brick\n" +
+    "C - New Wheel\n" +
+    "LMB - Select\n" +
+    "LMB x2 - Joint\n" +
+    "E - New Reactor\n" +
+    "R - Reset\n" +
+    "Backspace - Delete\n" +
+    "Space - time stop\n" +
+    "S - Action Button (Rotate, etc...)\n" +
+    "T - Spawn Tutorial Ball";
+
+  tutorialBall.textColor = 50;
+  tutorialBall.textSize = 10; 
+  tutorialBall.textRotation = false; 
+}
+
+function removeSpriteWithJoints(sprite) {
+  if (sprite) {
+    while (sprite.joints.length > 0) {
+      sprite.joints[0].remove();
+    }
+    sprite.remove();
+  }
+}
+
 function updateCamera() {
   let minX = 0;
   let maxX = width;
   let minY = floorPlatform.y - floorPlatform.h / 2;
   let maxY = floorPlatform.y + floorPlatform.h / 2;
 
-  let allObjects = [...boxes, ...wheels];
+  let allObjects = [...boxes, ...wheels, ...reactors];
   if (tutorialBall) allObjects.push(tutorialBall);
 
   if (allObjects.length > 0) {
@@ -198,7 +274,6 @@ function resetSelection() {
   }
 }
 
-// Автоматическое масштабирование при изменении размеров окна браузера
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
-}
+} 
