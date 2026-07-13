@@ -3,6 +3,8 @@ let boxes;
 let wheels; 
 let reactors; 
 let supersolids; 
+let spawners;     // Группа для блоков-спавнеров
+let miniCubes;    // Группа для маленьких кубиков 7x7
 let tutorialBall;
 
 let selectedSprites = []; 
@@ -11,6 +13,7 @@ let statusText = "";
 let statusTimer = 0;
 
 let worldJoints = []; 
+const MAX_MINI_CUBES = 150; // Лимит кубиков на экране
 
 function setup() {
   new Canvas(windowWidth, windowHeight);
@@ -25,6 +28,8 @@ function setup() {
   wheels = new Group(); 
   reactors = new Group(); 
   supersolids = new Group(); 
+  spawners = new Group();
+  miniCubes = new Group();
 
   spawnTutorialBall(200, 200);
 }
@@ -32,7 +37,7 @@ function setup() {
 function draw() {
   background(240);
 
-  
+  // Логика вращения колес
   for (let w of wheels) {
     if (!isFrozen) {
       if (w.customSpeed === undefined) w.customSpeed = 5; 
@@ -42,7 +47,7 @@ function draw() {
     }
   }
 
-  
+  // Логика работы реакторов
   if (!isFrozen && frameCount % 125 === 0) {
     for (let r of reactors) {
       r.direction = r.rotation; 
@@ -50,7 +55,22 @@ function draw() {
     }
   }
 
-  
+  // ЛОГИКА СПАВНЕРОВ
+  if (!isFrozen && frameCount % 20 === 0) {
+    for (let sp of spawners) {
+      if (miniCubes.length >= MAX_MINI_CUBES) {
+        miniCubes[0].remove();
+      }
+      
+      // ИСПРАВЛЕНО: кубики 7x7 спавнятся ПОД спавнером (на 26 пикселей вниз)
+      let cube = new miniCubes.Sprite(sp.x + random(-3, 3), sp.y + 26, 7, 7);
+      cube.color = color(random(100, 255), random(100, 255), random(100, 255));
+      cube.friction = 0.2;
+      cube.bounciness = 0.4;
+    }
+  }
+
+  // Создание объектов
   if (mouse.presses('right')) {
     let box = new boxes.Sprite(mouse.x, mouse.y, 40, 40);
     box.color = 'black';
@@ -74,13 +94,20 @@ function draw() {
     createReactorSprite(mouse.x, mouse.y, -90);
   }
 
+  // ИСПРАВЛЕНО: Спавнер теперь круглый (шарик диаметром 40) и подвижный (dynamic)
+  if (kb.presses('b')) {
+    let sp = new spawners.Sprite(mouse.x, mouse.y, 40); // Передан один размер — это делает его круглым
+    sp.color = 'darkblue';
+    sp.friction = 0.5;
+  }
+
   if (kb.presses('t')) {
     if (tutorialBall) removeSpriteWithJoints(tutorialBall);
     spawnTutorialBall(mouse.x, mouse.y);
   }
 
-  
-  let allInteractive = [...boxes, ...wheels, ...reactors, ...supersolids];
+  // Выделение и создание соединений
+  let allInteractive = [...boxes, ...wheels, ...reactors, ...supersolids, ...spawners];
   if (tutorialBall) allInteractive.push(tutorialBall);
 
   for (let s of allInteractive) {
@@ -107,7 +134,7 @@ function draw() {
     }
   }
 
-  
+  // Горячие клавиши S и A
   if (selectedSprites.length > 0) {
     if (kb.presses('s')) {
       for (let s of selectedSprites) {
@@ -131,6 +158,8 @@ function draw() {
           s.color = 'white'; s.friction = 9999; s.customSpeed = 5;
         } else if (supersolids.includes(s)) {
           s.color = 'purple'; s.friction = 0.5; s.collider = 'static';
+        } else if (spawners.includes(s)) {
+          s.color = 'darkblue'; s.friction = 0.5; s.collider = 'dynamic'; // Сброс в подвижный
         } else {
           s.color = 'black'; s.friction = 0.5;
         }
@@ -139,7 +168,7 @@ function draw() {
     }
   }
 
-  
+  // КОПИРОВАНИЕ В СИСТЕМНЫЙ БУФЕР ОБМЕНА
   if (kb.presses('u')) {
     if (selectedSprites.length > 0) {
       let avgX = 0, avgY = 0;
@@ -158,9 +187,9 @@ function draw() {
         if (wheels.includes(s)) type = 'wheel';
         if (reactors.includes(s)) type = 'reactor';
         if (supersolids.includes(s)) type = 'supersolid';
+        if (spawners.includes(s)) type = 'spawner';
         if (s === tutorialBall) type = 'tutorial';
 
-        
         let savedColor = s.color.toString(); 
 
         packageSprites.push({
@@ -168,7 +197,7 @@ function draw() {
           type: type,
           offsetX: s.x - avgX,
           offsetY: s.y - avgY,
-          color: savedColor, 
+          color: savedColor,
           friction: s.friction,
           rotation: s.rotation,
           customSpeed: s.customSpeed
@@ -198,7 +227,7 @@ function draw() {
     }
   }
 
-  
+  // ВСТАВКА ИЗ СИСТЕМНОГО БУФЕРА ОБМЕНА
   if (kb.presses('i')) {
     navigator.clipboard.readText().then(text => {
       try {
@@ -215,21 +244,16 @@ function draw() {
 
           if (sData.type === 'box') {
             newSprite = new boxes.Sprite(spawnX, spawnY, 40, 40);
-            newSprite.color = sData.color; 
-            newSprite.friction = sData.friction;
           } else if (sData.type === 'wheel') {
             newSprite = new wheels.Sprite(spawnX, spawnY, 40);
-            newSprite.color = sData.color; 
-            newSprite.friction = sData.friction;
             newSprite.customSpeed = sData.customSpeed;
           } else if (sData.type === 'supersolid') {
             newSprite = new supersolids.Sprite(spawnX, spawnY, 40, 40, 'static');
-            newSprite.color = sData.color; 
-            newSprite.friction = sData.friction;
+          } else if (sData.type === 'spawner') {
+            // Воспроизводим как круглый динамический при вставке
+            newSprite = new spawners.Sprite(spawnX, spawnY, 40);
           } else if (sData.type === 'reactor') {
             newSprite = createReactorSprite(spawnX, spawnY, sData.rotation);
-            newSprite.color = sData.color; 
-            newSprite.friction = sData.friction;
           } else if (sData.type === 'tutorial') {
             if (tutorialBall) removeSpriteWithJoints(tutorialBall);
             spawnTutorialBall(spawnX, spawnY);
@@ -237,7 +261,8 @@ function draw() {
           }
 
           if (newSprite) {
-            newSprite.color = sData.color; 
+            newSprite.color = sData.color;
+            newSprite.friction = sData.friction;
             newlyCreatedSprites[sData.id] = newSprite;
             selectSingle(newSprite); 
           }
@@ -253,7 +278,7 @@ function draw() {
           }
         }
         
-        statusText = "Pasted with colors!";
+        statusText = "Pasted construction!";
         statusTimer = 60;
       } catch (e) {
         statusText = "Invalid clipboard data!";
@@ -262,8 +287,8 @@ function draw() {
     });
   }
 
-  
-  for (let s of [...boxes, ...wheels, ...reactors, ...supersolids]) {
+  // Удаление улетевших объектов
+  for (let s of [...boxes, ...wheels, ...reactors, ...supersolids, ...spawners, ...miniCubes]) {
     if (s && (s.y > 2000 || s.y < -2000)) {
       if (selectedSprites.includes(s)) unselectSingle(s);
       removeSpriteWithJoints(s);
@@ -278,7 +303,7 @@ function draw() {
 
   if (mouse.presses('left') && !kb.holding('shift')) {
     let hoveredAny = false;
-    for (let s of [...boxes, ...wheels, ...reactors, ...supersolids]) {
+    for (let s of [...boxes, ...wheels, ...reactors, ...supersolids, ...spawners]) {
       if (s && s.mouse.hovering()) hoveredAny = true;
     }
     if (tutorialBall && tutorialBall.mouse.hovering()) hoveredAny = true;
@@ -294,9 +319,9 @@ function draw() {
   }
 
   if (kb.presses('r')) {
-    for (let s of [...boxes, ...wheels, ...reactors, ...supersolids]) removeSpriteWithJoints(s);
+    for (let s of [...boxes, ...wheels, ...reactors, ...supersolids, ...spawners, ...miniCubes]) removeSpriteWithJoints(s);
     if (tutorialBall) removeSpriteWithJoints(tutorialBall);
-    boxes.removeAll(); wheels.removeAll(); reactors.removeAll(); supersolids.removeAll();
+    boxes.removeAll(); wheels.removeAll(); reactors.removeAll(); supersolids.removeAll(); spawners.removeAll(); miniCubes.removeAll();
     selectedSprites = [];
     worldJoints = []; 
     spawnTutorialBall(200, 200); 
@@ -328,12 +353,12 @@ function spawnTutorialBall(x, y) {
   tutorialBall.text = 
     "RMB - New Brick\n" +
     "C - New Wheel\n" +
-    "G - New Supersolid (unmovable)\n" + 
+    "G - New Supersolid (Ground)\n" + 
     "E - New Reactor\n" +
-    "LMB - Select\n" +
-    "LMB x2 - Joint\n" +
+    "B - New Mobile Ball Spawner\n" + 
+    "LMB - Select / Joint (on 2nd click)\n" +
     "Shift+LMB - Multi-Select\n" +
-    "U / I - Copy / Paste\n" + 
+    "U / I - OS Clipboard Copy / Paste\n" + 
     "R - Reset\n" +
     "Backspace - Delete\n" +
     "Space - time stop\n" +
@@ -431,7 +456,7 @@ function removeSpriteWithJoints(sprite) {
 }
 
 function updateCamera() {
-  let allObjects = [...boxes, ...wheels, ...reactors, ...supersolids];
+  let allObjects = [...boxes, ...wheels, ...reactors, ...supersolids, ...spawners];
   if (tutorialBall) allObjects.push(tutorialBall);
 
   allObjects = allObjects.filter(s => s !== undefined && s !== null);
